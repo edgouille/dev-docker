@@ -1,77 +1,151 @@
+# Les trois services du projet.
 services:
+  # API Python, accessible uniquement sur le reseau Docker.
   api:
+    # Architecture des archives Linux preparees.
     platform: linux/amd64
+    # Construction de notre image personnalisee.
     build:
+      # Le dossier tp fournit les fichiers accessibles au build.
       context: .
+      # Chemin du Dockerfile utilise pour ce service.
       dockerfile: api/dockerfile
+    # Variables transmises au processus dans le conteneur.
     environment:
+      # Port interne de l'API.
       PORT: "5000"
+      # Nom DNS Compose du serveur Minecraft.
       GAME_HOST: game
+      # Port du jeu repris depuis .env, 25565 par defaut.
       GAME_PORT: "${GAME_PORT:-25565}"
+      # Nom affiche sur le site et dans Minecraft.
       SERVER_NAME: "${SERVER_NAME:-Minecraft - TP Docker}"
+      # Adresse de connexion affichee au joueur.
       PUBLIC_GAME_ADDRESS: "${PUBLIC_GAME_ADDRESS:-localhost:25565}"
+    # Plafond CPU configurable : 1 correspond a un coeur logique.
     cpus: "${API_CPUS:-0.5}"
+    # Plafond memoire ; le processus peut etre tue s'il le depasse.
     mem_limit: ${API_MEMORY:-128m}
+    # Controle regulier de la disponibilite du service.
     healthcheck:
+      # Commande executee dans le conteneur pour verifier sa reponse HTTP.
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health',timeout=2)"]
+      # Temps entre deux controles de sante.
       interval: 5s
+      # Duree maximale d'un controle.
       timeout: 3s
+      # Nombre d'echecs consecutifs avant l'etat unhealthy.
       retries: 3
+    # Connexion au reseau commun pour les communications internes.
     networks: [cloud]
+    # Temps laisse a l'arret propre avant SIGKILL.
     stop_grace_period: 10s
 
+  # Serveur Minecraft Java.
   game:
+    # Architecture des archives Linux preparees.
     platform: linux/amd64
+    # Construction de notre image personnalisee.
     build:
+      # Le dossier tp fournit les fichiers accessibles au build.
       context: .
+      # Chemin du Dockerfile utilise pour ce service.
       dockerfile: game/dockerfile
+    # Variables transmises au processus dans le conteneur.
     environment:
+      # Acceptation personnelle de l'EULA, false par defaut.
       EULA: "${EULA:-false}"
+      # Port du jeu repris depuis .env, 25565 par defaut.
       GAME_PORT: "${GAME_PORT:-25565}"
+      # Nom affiche sur le site et dans Minecraft.
       SERVER_NAME: "${SERVER_NAME:-Minecraft - TP Docker}"
+      # Nombre maximal de joueurs simultanes.
       MAX_PLAYERS: "${MAX_PLAYERS:-10}"
+      # Taille initiale du tas Java.
       JAVA_XMS: "${JAVA_XMS:-512M}"
+      # Tas maximal, inferieur au plafond memoire du conteneur.
       JAVA_XMX: "${JAVA_XMX:-1536M}"
+    # Publication des ports accessibles depuis l'ordinateur.
     ports:
+      # Port TCP Minecraft publie sur les interfaces de l'hote.
       - "${GAME_PORT:-25565}:${GAME_PORT:-25565}/tcp"
+    # Plafond CPU configurable : 1 correspond a un coeur logique.
     cpus: "${GAME_CPUS:-2}"
+    # Plafond memoire ; le processus peut etre tue s'il le depasse.
     mem_limit: ${GAME_MEMORY:-2g}
+    # Stockage persistant conserve apres recreation du conteneur.
     volumes:
+      # Montage du volume persistant sur /data.
       - minecraft-data:/data
+    # Dependance pour respecter l'ordre de demarrage.
     depends_on:
+      # API Python, accessible uniquement sur le reseau Docker.
       api:
+        # Attendre que l'API reponde a son controle de sante.
         condition: service_healthy
+    # Controle regulier de la disponibilite du service.
     healthcheck:
+      # Commande de verification ; $$ transmet la variable au conteneur.
       test: ["CMD-SHELL", "python3 /app/minecraft.py localhost \"$$GAME_PORT\""]
+      # Temps entre deux controles de sante.
       interval: 10s
+      # Duree maximale d'un controle.
       timeout: 5s
+      # Nombre d'echecs consecutifs avant l'etat unhealthy.
       retries: 6
+      # Delai initial pour laisser Minecraft generer ou charger le monde.
       start_period: 120s
+    # Connexion au reseau commun pour les communications internes.
     networks: [cloud]
+    # Temps laisse a l'arret propre avant SIGKILL.
     stop_grace_period: 60s
 
+  # Site HTML servi par Nginx.
   web:
+    # Architecture des archives Linux preparees.
     platform: linux/amd64
+    # Construction de notre image personnalisee.
     build:
+      # Le dossier tp fournit les fichiers accessibles au build.
       context: .
+      # Chemin du Dockerfile utilise pour ce service.
       dockerfile: web/dockerfile
+    # Publication des ports accessibles depuis l'ordinateur.
     ports:
+      # Site accessible uniquement depuis cet ordinateur.
       - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    # Plafond CPU configurable : 1 correspond a un coeur logique.
     cpus: "${WEB_CPUS:-0.2}"
+    # Plafond memoire ; le processus peut etre tue s'il le depasse.
     mem_limit: ${WEB_MEMORY:-128m}
+    # Dependance pour respecter l'ordre de demarrage.
     depends_on:
+      # API Python, accessible uniquement sur le reseau Docker.
       api:
+        # Attendre que l'API reponde a son controle de sante.
         condition: service_healthy
+    # Controle regulier de la disponibilite du service.
     healthcheck:
+      # Commande executee dans le conteneur pour verifier sa reponse HTTP.
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      # Temps entre deux controles de sante.
       interval: 10s
+      # Duree maximale d'un controle.
       timeout: 3s
+      # Nombre d'echecs consecutifs avant l'etat unhealthy.
       retries: 3
+    # Connexion au reseau commun pour les communications internes.
     networks: [cloud]
+    # Temps laisse a l'arret propre avant SIGKILL.
     stop_grace_period: 10s
 
+# Declaration du reseau Docker du projet.
 networks:
+  # Reseau dedie commun aux trois services.
   cloud:
+    # Reseau bridge entre conteneurs sur cet ordinateur.
     driver: bridge
+# Stockage persistant conserve apres recreation du conteneur.
 volumes:
+  # Volume nomme pour le monde et la configuration Minecraft.
   minecraft-data:
