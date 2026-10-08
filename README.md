@@ -60,7 +60,7 @@ Mojang pour Minecraft. Les fichiers sont dans `.docker`, ignore par Git.
 | --- | --- | --- | --- |
 | web | nginx | Servir HTML et relayer les requetes API | 8080/TCP |
 | api | python3 | API HTTP et interrogation de Minecraft | 5000/TCP |
-| game | openjdk21-jre-headless, python3 | Java 21 execute Minecraft, Python configure et teste le serveur | 25565/TCP |
+| game | openjdk21-jre-headless, python3 | Java 21 execute Minecraft, Python configure le serveur et controle sa disponibilite | 25565/TCP |
 
 `apk add --no-cache` installe les paquets et leurs dependances sans conserver
 le cache. Les runtimes apportent leurs bibliotheques systeme : compression,
@@ -117,7 +117,7 @@ Ce sont des plafonds, pas des reservations. `JAVA_XMX=1536M` reste inferieur
 a la limite de 2 Gio pour laisser de la place aux allocations natives et
 threads. Ajuster selon le monde et le nombre de joueurs avec `docker stats`.
 
-## Demarrage, stockage et tests
+## Demarrage et stockage
 
 Le jeu et le site attendent que l'API soit saine. Cela permet de consulter
 l'etat meme pendant le chargement de Minecraft. L'API utilise `/health`,
@@ -157,25 +157,12 @@ ne doivent pas etre publies ; les scripts et `.env.example` permettent de
 reconstruire. Le README contient les explications et le schema demandes.
 Ajouter des captures du site, des conteneurs et d'une connexion Minecraft.
 
-## Verifications effectuees
+## Mesures de ressources demandees
 
-- Les trois images se construisent sans image Docker Hub.
-- Compose et la configuration Nginx sont valides.
-- La page, /health et /api/status repondent ; un jeu absent est signale.
-- Trois tests Python passent : echange Status, paquet incomplet et VarInt invalide.
-- Les services s'executent avec UID 10001 ; le volume est inscriptible et
-  conserve un fichier entre deux conteneurs.
-- Les quotas CPU/memoire sont appliques aux trois conteneurs.
-- L'API et Nginx s'arretent avec un code de sortie 0.
-- Java 21 est installe et le lancement est refuse tant que EULA=false.
-
-Le chargement du vrai monde, sa sauvegarde par Minecraft et une connexion
-joueur restent a tester apres acceptation personnelle de l'EULA. Les conteneurs
-de verification sont arretes. Pour relancer les tests Python :
-
-```powershell
-python -m unittest discover -s tests -v
-```
+Les consignes demandent des benchmarks pour justifier les limites CPU et RAM.
+Utiliser `docker stats` au repos puis avec un joueur connecte et noter les
+valeurs observees. Ces mesures restent a consigner pour Minecraft apres
+acceptation personnelle de l'EULA.
 
 Sources : [Alpine officiel](https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/x86_64/),
 [serveur Minecraft officiel](https://www.minecraft.net/en-us/download/server).
