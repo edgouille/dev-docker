@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mon serveur Minecraft</title>
+    <style>
+        body { margin: 0; background: #132019; color: #edf6ee; font-family: system-ui, sans-serif; }
+        main { max-width: 650px; margin: 10vh auto; padding: 24px; }
+        h1 { font-size: clamp(2rem, 6vw, 3rem); }
+        section { background: #21362a; padding: 24px; border-radius: 14px; border: 1px solid #45654c; }
+        .label { color: #b6dcbf; }
+        #status { font-size: 1.25rem; font-weight: bold; }
+        code { color: #aee6b9; overflow-wrap: anywhere; }
+        button { padding: 12px 20px; background: #aee6b9; border: 0; border-radius: 8px; font: inherit; cursor: pointer; }
+        button:disabled { opacity: .6; cursor: wait; }
+        small { display: block; margin-top: 20px; color: #c0d2c3; }
+    </style>
+</head>
+<body>
+    <main>
+        <p class="label">TP DOCKER CLOUD</p>
+        <h1 id="name">Mon serveur Minecraft</h1>
+        <section>
+            <p id="status" role="status" aria-live="polite">Vérification en cours…</p>
+            <p>Connexion : <code id="address">En attente</code></p>
+            <p>Joueurs : <span id="players">—</span></p>
+            <p>Version Java Edition : <span id="version">—</span></p>
+            <button id="refresh" type="button">Actualiser</button>
+            <small id="updated"></small>
+        </section>
+    </main>
+    <script>
+        const button = document.getElementById('refresh');
+        async function refresh() {
+            button.disabled = true;
+            try {
+                const response = await fetch('/api/status', {signal: AbortSignal.timeout(7000)});
+                if (!response.ok) throw new Error('API indisponible');
+                const data = await response.json();
+                document.getElementById('name').textContent = data.name;
+                document.getElementById('address').textContent = data.address;
+                document.getElementById('status').textContent = data.online ? 'Serveur en ligne' : 'Serveur arrêté ou en cours de démarrage';
+                document.getElementById('players').textContent = data.online ? `${data.players} / ${data.max_players}` : '—';
+                document.getElementById('version').textContent = data.version || '—';
+            } catch (error) {
+                document.getElementById('status').textContent = 'Impossible de contacter l’API';
+                document.getElementById('players').textContent = '—';
+                document.getElementById('version').textContent = '—';
+            } finally {
+                document.getElementById('updated').textContent = 'Dernière vérification : ' + new Date().toLocaleTimeString('fr-FR');
+                button.disabled = false;
+            }
+        }
+        button.addEventListener('click', refresh);
+        refresh();
+    </script>
+</body>
+</html>

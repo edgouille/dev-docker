@@ -1,0 +1,77 @@
+services:
+  api:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: api/dockerfile
+    environment:
+      PORT: "5000"
+      GAME_HOST: game
+      GAME_PORT: "${GAME_PORT:-25565}"
+      SERVER_NAME: "${SERVER_NAME:-Minecraft - TP Docker}"
+      PUBLIC_GAME_ADDRESS: "${PUBLIC_GAME_ADDRESS:-localhost:25565}"
+    cpus: "${API_CPUS:-0.5}"
+    mem_limit: ${API_MEMORY:-128m}
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health',timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    networks: [cloud]
+    stop_grace_period: 10s
+
+  game:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: game/dockerfile
+    environment:
+      EULA: "${EULA:-false}"
+      GAME_PORT: "${GAME_PORT:-25565}"
+      SERVER_NAME: "${SERVER_NAME:-Minecraft - TP Docker}"
+      MAX_PLAYERS: "${MAX_PLAYERS:-10}"
+      JAVA_XMS: "${JAVA_XMS:-512M}"
+      JAVA_XMX: "${JAVA_XMX:-1536M}"
+    ports:
+      - "${GAME_PORT:-25565}:${GAME_PORT:-25565}/tcp"
+    cpus: "${GAME_CPUS:-2}"
+    mem_limit: ${GAME_MEMORY:-2g}
+    volumes:
+      - minecraft-data:/data
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 /app/minecraft.py localhost \"$$GAME_PORT\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 120s
+    networks: [cloud]
+    stop_grace_period: 60s
+
+  web:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: web/dockerfile
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    cpus: "${WEB_CPUS:-0.2}"
+    mem_limit: ${WEB_MEMORY:-128m}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks: [cloud]
+    stop_grace_period: 10s
+
+networks:
+  cloud:
+    driver: bridge
+volumes:
+  minecraft-data:

@@ -1,0 +1,16 @@
+FROM scratch
+ADD .docker/alpine.tar.gz /
+RUN apk add --no-cache openjdk21-jre-headless python3 \
+    && addgroup -S -g 10001 app \
+    && adduser -S -D -H -u 10001 -G app app \
+    && mkdir /data && chown 10001:10001 /data
+
+WORKDIR /app
+COPY --chown=10001:10001 .docker/server.jar /app/server.jar
+COPY --chown=10001:10001 game/start.py api/minecraft.py /app/
+ENV EULA=false GAME_PORT=25565 JAVA_XMS=512M JAVA_XMX=1536M PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+WORKDIR /data
+USER 10001:10001
+EXPOSE 25565
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["python3", "/app/start.py"]
