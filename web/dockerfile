@@ -1,14 +1,24 @@
+# Base vide, sans image Docker Hub.
 FROM scratch
+# Systeme Alpine officiel extrait depuis l'archive locale.
 ADD .docker/alpine.tar.gz /
+# Installation de Nginx et creation du compte applicatif.
 RUN apk add --no-cache nginx \
     && addgroup -S -g 10001 app \
     && adduser -S -D -H -u 10001 -G app app
 
+# Configuration du site et du relais vers l'API.
 COPY web/nginx.conf /etc/nginx/nginx.conf
+# Page HTML appartenant au compte applicatif.
 COPY --chown=10001:10001 web/index.html /var/www/html/index.html
+# Nginx utilise un port non privilegie et /tmp pour fonctionner sans root.
 USER 10001:10001
 
+# Port interne du site, publie par Compose.
 EXPOSE 8080
+# SIGQUIT permet l'arret progressif des requetes Nginx.
 STOPSIGNAL SIGQUIT
+# Nginx devient le processus principal ; erreurs vers les logs Docker.
 ENTRYPOINT ["nginx", "-e", "/dev/stderr"]
+# Execution au premier plan pour garder le conteneur actif.
 CMD ["-g", "daemon off;"]

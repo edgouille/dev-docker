@@ -1,16 +1,29 @@
+# Base vide : aucune image provenant de Docker Hub.
 FROM scratch
+# Extraction du systeme Alpine officiel local.
 ADD .docker/alpine.tar.gz /
+# Java 21 execute Minecraft ; Python configure et teste le serveur.
+# Le compte app et /data permettent de sauvegarder sans privileges root.
 RUN apk add --no-cache openjdk21-jre-headless python3 \
     && addgroup -S -g 10001 app \
     && adduser -S -D -H -u 10001 -G app app \
     && mkdir /data && chown 10001:10001 /data
 
+# Repertoire des executables et scripts.
 WORKDIR /app
+# JAR officiel Minecraft verifie par prepare.py.
 COPY --chown=10001:10001 .docker/server.jar /app/server.jar
+# Configuration au lancement et client Status pour le healthcheck.
 COPY --chown=10001:10001 game/start.py api/minecraft.py /app/
+# EULA non accepte par defaut ; tas Java et logs configurables.
 ENV EULA=false GAME_PORT=25565 JAVA_XMS=512M JAVA_XMX=1536M PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+# Minecraft ecrit son monde dans le volume monte sur /data.
 WORKDIR /data
+# Execution sous le compte non privilegie.
 USER 10001:10001
+# Port de connexion Minecraft, publie par Compose.
 EXPOSE 25565
+# Java recoit SIGTERM et peut sauvegarder le monde avant de quitter.
 STOPSIGNAL SIGTERM
+# start.py prepare les fichiers puis se remplace par Java avec exec.
 ENTRYPOINT ["python3", "/app/start.py"]
