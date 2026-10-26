@@ -1,4 +1,4 @@
-# Les trois services du projet.
+# Trois services applicatifs et deux outils ponctuels du profil ci.
 services:
   # API Python, accessible uniquement sur le reseau Docker.
   api:
@@ -183,6 +183,55 @@ services:
     # Connexion au reseau commun pour les communications internes.
     networks: [cloud]
     # Temps laisse a l'arret propre avant SIGKILL.
+    stop_grace_period: 10s
+
+  # Controle Python ponctuel : ne demarre pas avec la stack habituelle.
+  lint:
+    # Activation explicite avec --profile ci, sans dependance aux services du jeu.
+    profiles: [ci]
+    platform: linux/amd64
+    # Contexte commun pour copier les sources et le rootfs officiel.
+    build:
+      context: .
+      dockerfile: lint/dockerfile
+    # Pas d'acces reseau necessaire pendant l'analyse statique.
+    network_mode: none
+    # Quotas configurables pour ne pas saturer l'ordinateur.
+    cpus: "${LINT_CPUS:-0.5}"
+    mem_limit: ${LINT_MEMORY:-256m}
+    # Execution isolee ; aucun volume applicatif ni secret monte.
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777,noexec,nosuid,nodev
+    pids_limit: 64
+    # Outil ponctuel : son code de sortie indique succes ou echec.
+    restart: "no"
+    stop_grace_period: 10s
+
+  # Verification de l'API et du protocole Minecraft avec cas controles.
+  tests:
+    profiles: [ci]
+    platform: linux/amd64
+    # Image autonome utilisant Python et unittest.
+    build:
+      context: .
+      dockerfile: tests/dockerfile
+    # Seule la boucle locale est utilisee ; aucun vrai monde n'est sollicite.
+    network_mode: none
+    # Limites propres au conteneur de tests.
+    cpus: "${TESTS_CPUS:-0.5}"
+    mem_limit: ${TESTS_MEMORY:-128m}
+    # Meme isolation que les autres services, sans donnees persistantes.
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777,noexec,nosuid,nodev
+    pids_limit: 64
+    # Pas de redemarrage automatique masquant un echec de verification.
+    restart: "no"
     stop_grace_period: 10s
 
 # Declaration du reseau Docker du projet.

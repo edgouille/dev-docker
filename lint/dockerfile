@@ -1,0 +1,26 @@
+# Image personnalisee sans Docker Hub.
+FROM scratch
+# Systeme Alpine officiel verifie par prepare.py.
+ADD .docker/alpine.tar.gz /
+# Correctifs systeme, Ruff et utilisateur non privilegie.
+RUN apk upgrade --no-cache \
+    && apk add --no-cache ruff \
+    && addgroup -S -g 10001 app \
+    && adduser -S -D -H -u 10001 -G app app
+# Dossier des sources a analyser.
+WORKDIR /workspace
+# Regles de lint communes au projet.
+COPY lint/ruff.toml ./ruff.toml
+# Copie des seules sources Python necessaires, sans secrets ni monde Minecraft.
+COPY api/ ./api/
+COPY game/start.py ./game/start.py
+COPY prepare.py ./prepare.py
+COPY tests/ ./tests/
+# Ruff n'a pas besoin des privileges root.
+USER 10001:10001
+# Arret immediat et propre du processus de verification.
+STOPSIGNAL SIGTERM
+# Code non nul si Ruff trouve une erreur ; aucune correction automatique.
+ENTRYPOINT ["ruff", "check", "--no-cache", "--config", "/workspace/ruff.toml"]
+# Repertoires controles par defaut, remplacables au lancement.
+CMD ["api", "game", "prepare.py", "tests"]

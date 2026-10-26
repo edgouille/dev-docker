@@ -1,0 +1,24 @@
+# Image de tests personnalisee sans image Docker Hub.
+FROM scratch
+# Systeme Alpine local prepare et verifie par prepare.py.
+ADD .docker/alpine.tar.gz /
+# Python fournit unittest ; aucune dependance pip supplementaire.
+RUN apk upgrade --no-cache \
+    && apk add --no-cache python3 \
+    && addgroup -S -g 10001 app \
+    && adduser -S -D -H -u 10001 -G app app
+# Sources importees par les tests.
+WORKDIR /workspace
+COPY api/ ./api/
+# Scenarios de verification, sans serveur.jar ni donnees de jeu.
+COPY tests/ ./tests/
+# Imports de l'API, logs immediats et aucune ecriture de fichiers pyc.
+ENV PYTHONPATH=/workspace/api PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+# Verification sous utilisateur non privilegie.
+USER 10001:10001
+# Le processus Python recoit directement les signaux Docker.
+STOPSIGNAL SIGTERM
+# unittest retourne un code non nul en cas d'echec.
+ENTRYPOINT ["python3", "-m", "unittest"]
+# Decouverte automatique de tous les tests.
+CMD ["discover", "-s", "tests", "-v"]

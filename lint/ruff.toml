@@ -1,0 +1,6 @@
+target-version = "py312"
+
+[lint]
+# Erreurs de syntaxe, noms inconnus et imports/variables inutilises.
+# Le formatage complet du code existant reste hors de ce controle.
+select = ["E9", "F"]
