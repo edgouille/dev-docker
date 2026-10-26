@@ -102,6 +102,7 @@ arret rapide ; l'API dispose de 10 secondes pour s'arreter.
 | JAVA_XMS / JAVA_XMX | Tas Java initial et maximal |
 | WEB/API/GAME_CPUS | Plafonds CPU de chaque service |
 | WEB/API/GAME_MEMORY | Plafonds memoire de chaque service |
+| API_REPLICAS | Nombre d'instances de l'API (1 par defaut) |
 
 Ces valeurs figurent dans `.env.example` et sont transmises par Compose.
 `PORT=5000` et `GAME_HOST=game` configurent aussi l'API dans Compose.
@@ -116,6 +117,27 @@ Si GAME_PORT change, adapter PUBLIC_GAME_ADDRESS et la connexion du client.
 Ce sont des plafonds, pas des reservations. `JAVA_XMX=1536M` reste inferieur
 a la limite de 2 Gio pour laisser de la place aux allocations natives et
 threads. Ajuster selon le monde et le nombre de joueurs avec `docker stats`.
+
+### Scaling de l'API
+
+Les plafonds RAM sont aussi declares dans `deploy.resources.limits` et
+s'appliquent **par conteneur**. Trois API peuvent donc consommer au maximum
+384 Mio et 1,5 coeur au total. Le web reste a 128 Mio et Minecraft a 2 Gio.
+
+Pour lancer trois instances de l'API, definir `API_REPLICAS=3` dans `.env`,
+puis executer :
+
+```powershell
+docker compose up -d api web
+docker compose ps
+```
+
+Nginx retrouve les instances via le DNS Docker du service `api` (cache de
+10 secondes) et repartit ses connexions entre les adresses disponibles.
+Il s'agit de scaling manuel, sans ajustement automatique selon la charge.
+Revenir a `API_REPLICAS=1` puis relancer la commande pour reduire le nombre.
+Le web garde une instance car il publie un port fixe. Minecraft garde une
+instance car plusieurs serveurs ne doivent pas ecrire dans le meme monde.
 
 ## Demarrage et stockage
 

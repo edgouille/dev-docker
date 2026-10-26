@@ -26,6 +26,13 @@ services:
     cpus: "${API_CPUS:-0.5}"
     # Plafond memoire ; le processus peut etre tue s'il le depasse.
     mem_limit: ${API_MEMORY:-128m}
+    # Scaling manuel de l'API ; les quotas s'appliquent a chaque instance.
+    deploy:
+      replicas: ${API_REPLICAS:-1}
+      resources:
+        limits:
+          cpus: "${API_CPUS:-0.5}"
+          memory: ${API_MEMORY:-128m}
     # Controle regulier de la disponibilite du service.
     healthcheck:
       # Commande executee dans le conteneur pour verifier sa reponse HTTP.
@@ -73,6 +80,13 @@ services:
     cpus: "${GAME_CPUS:-2}"
     # Plafond memoire ; le processus peut etre tue s'il le depasse.
     mem_limit: ${GAME_MEMORY:-2g}
+    # Un seul serveur ecrit dans le monde persistant.
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "${GAME_CPUS:-2}"
+          memory: ${GAME_MEMORY:-2g}
     # Stockage persistant conserve apres recreation du conteneur.
     volumes:
       # Montage du volume persistant sur /data.
@@ -118,6 +132,13 @@ services:
     cpus: "${WEB_CPUS:-0.2}"
     # Plafond memoire ; le processus peut etre tue s'il le depasse.
     mem_limit: ${WEB_MEMORY:-128m}
+    # Une seule passerelle publie le port HTTP fixe.
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "${WEB_CPUS:-0.2}"
+          memory: ${WEB_MEMORY:-128m}
     # Dependance pour respecter l'ordre de demarrage.
     depends_on:
       # API Python, accessible uniquement sur le reseau Docker.
