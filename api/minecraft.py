@@ -28,6 +28,8 @@ def read_varint(stream):
     result = 0
     for shift in range(0, 35, 7):
         byte = read_exact(stream, 1)[0]
+        if shift == 28 and byte > 15:
+            raise ValueError('VarInt depassant 32 bits')
         result |= (byte & 0x7f) << shift
         if not byte & 0x80:
             return result
@@ -52,6 +54,10 @@ def query(host, port):
             result = json.loads(read_exact(packet, length))
             if not isinstance(result, dict) or not isinstance(result.get('players'), dict) or not isinstance(result.get('version'), dict):
                 raise ValueError('Etat Minecraft invalide')
+            if not all(type(result['players'].get(key)) is int and result['players'][key] >= 0 for key in ('online', 'max')):
+                raise ValueError('Nombre de joueurs invalide')
+            if not isinstance(result['version'].get('name'), str):
+                raise ValueError('Version Minecraft invalide')
             return result
 
 if __name__ == '__main__':

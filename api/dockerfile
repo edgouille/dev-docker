@@ -2,6 +2,8 @@
 FROM scratch
 # Extraction du systeme Alpine officiel prepare par prepare.py.
 ADD .docker/alpine.tar.gz /
+# Corrige aussi les paquets deja presents dans l'archive de base.
+RUN apk upgrade --no-cache
 # Python execute l'API ; le compte app evite un lancement en root.
 RUN apk add --no-cache python3 \
     && addgroup -S -g 10001 app \

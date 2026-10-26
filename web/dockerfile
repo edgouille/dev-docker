@@ -2,6 +2,8 @@
 FROM scratch
 # Systeme Alpine officiel extrait depuis l'archive locale.
 ADD .docker/alpine.tar.gz /
+# Met a jour les bibliotheques de la base avant d'installer Nginx.
+RUN apk upgrade --no-cache
 # Installation de Nginx et creation du compte applicatif.
 RUN apk add --no-cache nginx \
     && addgroup -S -g 10001 app \

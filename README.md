@@ -60,12 +60,15 @@ Mojang pour Minecraft. Les fichiers sont dans `.docker`, ignore par Git.
 | --- | --- | --- | --- |
 | web | nginx | Servir HTML et relayer les requetes API | 8080/TCP |
 | api | python3 | API HTTP et interrogation de Minecraft | 5000/TCP |
-| game | openjdk21-jre-headless, python3 | Java 21 execute Minecraft, Python configure le serveur et controle sa disponibilite | 25565/TCP |
+| game | openjdk21-jre-headless, python3, eudev-libs | Java 21 execute Minecraft, Python configure et controle le serveur, eudev-libs fournit udev pour JNA | 25565/TCP |
 
 `apk add --no-cache` installe les paquets et leurs dependances sans conserver
 le cache. Les runtimes apportent leurs bibliotheques systeme : compression,
 SSL, musl et modules Python notamment. Le code Python n'utilise aucun paquet
 pip. Java headless n'a pas besoin d'interface graphique.
+Le /tmp du jeu autorise explicitement le chargement executable des bibliotheques
+natives JNA/Netty ; sa taille reste bornee a 64 Mio, avec nosuid et nodev.
+Les /tmp du web et de l'API restent noexec.
 Les paquets Alpine peuvent evoluer : rootfs et JAR fixes ne garantissent pas
 un build identique bit pour bit dans le temps.
 
@@ -96,6 +99,7 @@ arret rapide ; l'API dispose de 10 secondes pour s'arreter.
 | EULA | Acceptation personnelle obligatoire avant lancement du jeu |
 | SERVER_NAME | Nom affiche sur le site et MOTD Minecraft |
 | GAME_PORT | Port du serveur, publication et cible de l'API |
+| GAME_BIND_ADDRESS | Adresse d'ecoute sur l'hote, 127.0.0.1 par defaut |
 | PUBLIC_GAME_ADDRESS | Adresse affichee au joueur |
 | WEB_PORT | Port du site sur l'ordinateur |
 | MAX_PLAYERS | Nombre maximal de joueurs |
@@ -183,8 +187,26 @@ Ajouter des captures du site, des conteneurs et d'une connexion Minecraft.
 
 Les consignes demandent des benchmarks pour justifier les limites CPU et RAM.
 Utiliser `docker stats` au repos puis avec un joueur connecte et noter les
-valeurs observees. Ces mesures restent a consigner pour Minecraft apres
-acceptation personnelle de l'EULA.
+valeurs observees. Une mesure de 20 secondes sans joueur a releve environ
+631 Mio au maximum observe pour Minecraft, sur 2 Gio disponibles.
+Les mesures avec un joueur actif restent a effectuer.
+
+## Fonctionnement et securite
+
+Les conteneurs fonctionnent sans privileges supplementaires, avec racine
+en lecture seule, /tmp borne et limite de processus. L'API limite ses
+connexions ; Nginx limite les requetes de statut et masque les versions.
+Minecraft et le site sont accessibles uniquement depuis l'ordinateur par
+defaut. Une exposition reseau du jeu exige GAME_BIND_ADDRESS explicite.
+
+Le protocole et le scaling ont d'abord ete verifies avec une simulation.
+Apres acceptation personnelle de l'EULA, le vrai serveur a genere son monde,
+repondu a l'API et demande l'authentification lors d'une tentative de login.
+La sauvegarde sur SIGTERM et la conservation du monde apres recreation sont
+verifiees, avec lecture des metadonnees du monde. La connexion d'un vrai joueur
+a ensuite ete confirmee par l'utilisateur.
+Les modifications de securite ne remplacent pas la mise a jour de Docker
+Desktop ni celle du serveur Minecraft et de ses bibliotheques embarquees.
 
 Sources : [Alpine officiel](https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/x86_64/),
 [serveur Minecraft officiel](https://www.minecraft.net/en-us/download/server).

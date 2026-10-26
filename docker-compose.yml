@@ -26,6 +26,13 @@ services:
     cpus: "${API_CPUS:-0.5}"
     # Plafond memoire ; le processus peut etre tue s'il le depasse.
     mem_limit: ${API_MEMORY:-128m}
+    # Reduit les privileges et limite les processus et fichiers temporaires.
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777,noexec,nosuid,nodev
+    pids_limit: 128
     # Scaling manuel de l'API ; les quotas s'appliquent a chaque instance.
     deploy:
       replicas: ${API_REPLICAS:-1}
@@ -33,6 +40,7 @@ services:
         limits:
           cpus: "${API_CPUS:-0.5}"
           memory: ${API_MEMORY:-128m}
+          pids: 128
     # Controle regulier de la disponibilite du service.
     healthcheck:
       # Commande executee dans le conteneur pour verifier sa reponse HTTP.
@@ -74,12 +82,20 @@ services:
       JAVA_XMX: "${JAVA_XMX:-1536M}"
     # Publication des ports accessibles depuis l'ordinateur.
     ports:
-      # Port TCP Minecraft publie sur les interfaces de l'hote.
-      - "${GAME_PORT:-25565}:${GAME_PORT:-25565}/tcp"
+      # Port TCP publie sur l'adresse choisie, locale par defaut.
+      - "${GAME_BIND_ADDRESS:-127.0.0.1}:${GAME_PORT:-25565}:${GAME_PORT:-25565}/tcp"
     # Plafond CPU configurable : 1 correspond a un coeur logique.
     cpus: "${GAME_CPUS:-2}"
     # Plafond memoire ; le processus peut etre tue s'il le depasse.
     mem_limit: ${GAME_MEMORY:-2g}
+    # Seul /data (volume) et /tmp restent inscriptibles.
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs:
+      # Java doit pouvoir charger les bibliotheques natives JNA/Netty extraites ici.
+      - /tmp:size=64m,mode=1777,exec,nosuid,nodev
+    pids_limit: 512
     # Un seul serveur ecrit dans le monde persistant.
     deploy:
       replicas: 1
@@ -87,6 +103,7 @@ services:
         limits:
           cpus: "${GAME_CPUS:-2}"
           memory: ${GAME_MEMORY:-2g}
+          pids: 512
     # Stockage persistant conserve apres recreation du conteneur.
     volumes:
       # Montage du volume persistant sur /data.
@@ -132,6 +149,13 @@ services:
     cpus: "${WEB_CPUS:-0.2}"
     # Plafond memoire ; le processus peut etre tue s'il le depasse.
     mem_limit: ${WEB_MEMORY:-128m}
+    # Nginx fonctionne sans capacites Linux supplementaires.
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777,noexec,nosuid,nodev
+    pids_limit: 64
     # Une seule passerelle publie le port HTTP fixe.
     deploy:
       replicas: 1
@@ -139,6 +163,7 @@ services:
         limits:
           cpus: "${WEB_CPUS:-0.2}"
           memory: ${WEB_MEMORY:-128m}
+          pids: 64
     # Dependance pour respecter l'ordre de demarrage.
     depends_on:
       # API Python, accessible uniquement sur le reseau Docker.
