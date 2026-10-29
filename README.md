@@ -1,6 +1,14 @@
 # TP Docker Cloud - Minecraft
 
-Trois services : **HTML avec Nginx**, **API Python**, **Minecraft Java 1.21.11**.
+Trois services applicatifs : **HTML avec Nginx**, **API Python**, **Minecraft
+Java 1.21.11**. Deux conteneurs supplementaires, **lint** et **tests**, repondent
+a la nouvelle consigne CI/CD et se lancent a la demande avec le profil `ci`.
+
+Le site est un tableau de statut : il affiche l'adresse de connexion, la
+disponibilite du serveur, sa version et le nombre de joueurs. Le bouton
+Actualiser interroge l'API ; la page ne lance ni n'arrete Minecraft et ne
+rafraichit pas automatiquement les donnees. Le jeu se pratique dans le client
+Minecraft, pas dans le navigateur.
 
 ## Demarrer
 
@@ -36,21 +44,34 @@ les installations de Python, Java et Nginx demandent aussi Internet.
 
 ```mermaid
 flowchart LR
+    subgraph cloud[Reseau Docker cloud]
+        Web[web : HTML / Nginx]
+        API[api : Python]
+        Game[game : Minecraft Java]
+    end
     Browser[Navigateur] -->|HTTP localhost:8080| Web[web : HTML / Nginx]
     Web -->|HTTP api:5000| API[api : Python]
     API -->|Protocole Status TCP 25565| Game[game : Minecraft Java]
     Player[Client Minecraft] -->|TCP localhost:25565| Game
     Game --> World[(Volume minecraft-data)]
+    subgraph ci[Profil ci : conteneurs ponctuels sans reseau externe]
+        Sources[Sources Python et scenarios de tests]
+        Sources -. Copie au build .-> Lint[lint : Ruff]
+        Sources -. Copie au build .-> Tests[tests : unittest]
+    end
 ```
 
 Le reseau `cloud` permet aux services de se trouver avec leur nom DNS.
 Seuls le site et Minecraft publient des ports sur l'ordinateur. Nginx transmet
 `/api/status` a Python. L'API renvoie l'etat, la version et le nombre de joueurs
 fournis par Minecraft. Si le jeu ne repond pas, elle retourne `online=false`.
+`lint` et `tests` ne se connectent pas aux services applicatifs : ils utilisent
+le code copie dans leurs images. Le fichier `architecture.drawio` represente
+les cinq conteneurs ; les fleches en pointilles indiquent les copies au build.
 
 ## Choix des images et dependances
 
-Les trois images partent de `scratch` et extraient un rootfs officiel Alpine
+Les cinq images partent de `scratch` et extraient un rootfs officiel Alpine
 3.23.6. **Aucune image Docker Hub n'est utilisee**, meme pour la construction.
 `prepare.py` telecharge le rootfs et le JAR officiel depuis Alpine et Mojang,
 puis verifie les empreintes attendues : SHA256 pour Alpine, SHA1 fourni par
@@ -61,6 +82,8 @@ Mojang pour Minecraft. Les fichiers sont dans `.docker`, ignore par Git.
 | web | nginx | Servir HTML et relayer les requetes API | 8080/TCP |
 | api | python3 | API HTTP et interrogation de Minecraft | 5000/TCP |
 | game | openjdk21-jre-headless, python3, eudev-libs | Java 21 execute Minecraft, Python configure et controle le serveur, eudev-libs fournit udev pour JNA | 25565/TCP |
+| lint | ruff | Detecter les erreurs Python sans modifier le code | Aucun |
+| tests | python3 | Executer unittest et les serveurs locaux de verification | Aucun port publie |
 
 `apk add --no-cache` installe les paquets et leurs dependances sans conserver
 le cache. Les runtimes apportent leurs bibliotheques systeme : compression,
@@ -75,7 +98,7 @@ un build identique bit pour bit dans le temps.
 ## Operations sur le systeme et points d'entree
 
 - `addgroup` et `adduser` creent le compte applicatif UID/GID 10001.
-- `USER` lance les trois services sans privileges root.
+- `USER` lance les cinq services sans privileges root.
 - `WORKDIR` definit les repertoires de travail ; `COPY` ajoute le code.
 - `COPY --chown` attribue les fichiers au compte applicatif.
 - Le jeu cree `/data` et en donne la propriete a cet utilisateur pour sauvegarder.
@@ -83,6 +106,10 @@ un build identique bit pour bit dans le temps.
   dans `/tmp`. Le port 8080 permet son execution sans privileges root.
 - `PYTHONUNBUFFERED` affiche immediatement les logs ; `PYTHONDONTWRITEBYTECODE`
   evite la creation de fichiers pyc.
+- `apk upgrade --no-cache` applique les correctifs aux paquets deja presents
+  dans le rootfs avant l'installation des dependances propres a chaque image.
+- Pour les outils CI, `WORKDIR /workspace` regroupe les sources copiees au build.
+  Aucun fichier `.env`, JAR Minecraft ou monde sauvegarde n'y est copie.
 
 `ENTRYPOINT` utilise la forme exec : Nginx et l'API sont les processus principaux.
 Nginx reste au premier plan avec `daemon off`. L'API traite SIGTERM et ferme
@@ -91,6 +118,12 @@ puis se remplace par Java avec `os.execvp` : Java recoit donc SIGTERM directemen
 et lance sa procedure d'arret et de sauvegarde. Compose lui laisse 60 secondes.
 Nginx utilise SIGQUIT pour son arret progressif et gere aussi SIGTERM pour un
 arret rapide ; l'API dispose de 10 secondes pour s'arreter.
+Pour `lint`, l'ENTRYPOINT lance directement `ruff check` avec sa configuration ;
+le CMD precise les dossiers controles. Pour `tests`, l'ENTRYPOINT lance
+`python3 -m unittest` et le CMD demande la decouverte des scenarios. Aucun
+shell intermediaire ne masque le code de sortie. Ces deux outils recoivent
+directement SIGTERM et disposent de 10 secondes pour quitter. Ils ne stockent
+pas de donnees persistantes et ne redemarrent pas automatiquement.
 
 ## Parametres et ressources
 
@@ -107,6 +140,8 @@ arret rapide ; l'API dispose de 10 secondes pour s'arreter.
 | WEB/API/GAME_CPUS | Plafonds CPU de chaque service |
 | WEB/API/GAME_MEMORY | Plafonds memoire de chaque service |
 | API_REPLICAS | Nombre d'instances de l'API (1 par defaut) |
+| LINT_CPUS / LINT_MEMORY | Plafonds de ressources du conteneur Ruff |
+| TESTS_CPUS / TESTS_MEMORY | Plafonds de ressources du conteneur unittest |
 
 Ces valeurs figurent dans `.env.example` et sont transmises par Compose.
 `PORT=5000` et `GAME_HOST=game` configurent aussi l'API dans Compose.
@@ -117,6 +152,8 @@ Si GAME_PORT change, adapter PUBLIC_GAME_ADDRESS et la connexion du client.
 | web | 0.2 | 128 Mio | Page statique et petites requetes |
 | api | 0.5 | 128 Mio | API legere, sans framework |
 | game | 2 | 2 Gio | Petit serveur de TP avec tas Java de 1536 Mio |
+| lint | 0.5 | 256 Mio | Analyse ponctuelle de plusieurs fichiers Python |
+| tests | 0.5 | 128 Mio | Petite suite unittest, sans JVM ni monde de jeu |
 
 Ce sont des plafonds, pas des reservations. `JAVA_XMX=1536M` reste inferieur
 a la limite de 2 Gio pour laisser de la place aux allocations natives et
@@ -142,6 +179,57 @@ Il s'agit de scaling manuel, sans ajustement automatique selon la charge.
 Revenir a `API_REPLICAS=1` puis relancer la commande pour reduire le nombre.
 Le web garde une instance car il publie un port fixe. Minecraft garde une
 instance car plusieurs serveurs ne doivent pas ecrire dans le meme monde.
+
+## Conteneurs CI/CD : lint et tests
+
+Ces deux services remplissent les deux ajouts demandes par le nouveau sujet.
+Le profil `ci` les separe du lancement habituel de l'application. Il n'est
+pas necessaire de demarrer Minecraft ni d'accepter l'EULA pour les executer.
+Ils n'ont pas de dependance `depends_on`, pas de volume applicatif et aucun
+port publie. `network_mode: none` interdit l'acces reseau externe ; la boucle
+locale reste disponible pour les serveurs de tests.
+
+Depuis le dossier du projet, apres `python prepare.py` :
+
+```powershell
+docker compose --profile ci run --rm --build lint
+# Verifier le code de sortie immediatement apres la commande.
+$LASTEXITCODE
+docker compose --profile ci run --rm --build tests
+$LASTEXITCODE
+```
+
+`--build` actualise l'image avec les sources du depot ; `--rm` supprime le
+conteneur ponctuel une fois termine. Un code **0** indique un succes ; un code
+**non nul** signale un probleme. Ces commandes ne corrigent pas le code.
+Le lancement est manuel : aucun pipeline distant n'est configure.
+
+### Lint
+
+Ruff est installe depuis les depots Alpine, sans image Docker Hub ni paquet
+pip. `lint/ruff.toml` active `E9` et `F` : erreurs de syntaxe, noms inconnus,
+imports et variables inutilises. Il analyse `api`, `game/start.py`, `prepare.py`
+et `tests`. Il ne reformate pas le projet, ne verifie pas les CVE et n'analyse
+pas HTML ou les fichiers Docker. `--no-cache` evite d'ecrire un cache dans
+l'image en lecture seule. Le resultat attendu est `All checks passed!`.
+
+### Tests
+
+Python fournit `unittest`, sans dependance supplementaire. Les 12 tests couvrent :
+
+- Les routes HTTP `/health`, `/api/status` et une route inconnue (404).
+- L'etat en ligne, les donnees de joueurs, le cache et le cas d'un jeu absent
+  ou renvoyant une reponse invalide.
+- L'echange binaire Status Minecraft, les bornes des VarInt, les donnees
+  tronquees, les reponses trop grandes et les valeurs de joueurs invalides.
+
+Les tests HTTP lancent une API locale temporaire. Le protocole Minecraft est
+verifie avec un serveur local controle : aucun vrai monde n'est modifie et
+aucun compte joueur n'est utilise. Le resultat attendu est `Ran 12 tests`,
+puis `OK`. Ces scenarios ne remplacent pas une connexion dans le vrai jeu.
+La verification locale du 29 octobre 2026 confirme les 12 tests et Ruff.
+Docker Desktop etant arrete lors de cet audit, cette verification ne confirme
+pas une nouvelle execution de ces commandes dans leurs conteneurs.
 
 ## Demarrage et stockage
 
@@ -178,16 +266,20 @@ Sous Windows, Docker Desktop fournit un environnement Linux pour ces images.
 
 ## Rendu Git
 
-Mettre ce dossier dans un depot Git et fournir son lien. `.docker` et `.env`
+Depot configure : https://github.com/edgouille/dev-docker.
+Fournir ce lien pour le rendu et pousser les derniers changements avant
+la date limite : le correcteur examine le dernier commit avant cette date. `.docker` et `.env`
 ne doivent pas etre publies ; les scripts et `.env.example` permettent de
 reconstruire. Le README contient les explications et le schema demandes.
-Ajouter des captures du site, des conteneurs et d'une connexion Minecraft.
+Des captures du site, des conteneurs et d'une connexion Minecraft peuvent
+completer le rendu ; elles ne sont pas exigees par le PDF fourni.
 
-## Mesures de ressources demandees
+## Mesures de ressources complementaires
 
-Les consignes demandent des benchmarks pour justifier les limites CPU et RAM.
+Le bareme demande d'expliquer les limites CPU et RAM ; le PDF ne demande
+pas de benchmarks. Les mesures suivantes peuvent completer leur justification.
 Utiliser `docker stats` au repos puis avec un joueur connecte et noter les
-valeurs observees. Une mesure de 20 secondes sans joueur a releve environ
+valeurs observees. Une mesure anterieurement rapportee de 20 secondes sans joueur a releve environ
 631 Mio au maximum observe pour Minecraft, sur 2 Gio disponibles.
 Les mesures avec un joueur actif restent a effectuer.
 
@@ -199,6 +291,8 @@ connexions ; Nginx limite les requetes de statut et masque les versions.
 Minecraft et le site sont accessibles uniquement depuis l'ordinateur par
 defaut. Une exposition reseau du jeu exige GAME_BIND_ADDRESS explicite.
 
+Les validations suivantes sont rapportees dans la documentation existante ;
+elles n'ont pas ete reproduites lors de l'audit du 29 octobre 2026.
 Le protocole et le scaling ont d'abord ete verifies avec une simulation.
 Apres acceptation personnelle de l'EULA, le vrai serveur a genere son monde,
 repondu a l'API et demande l'authentification lors d'une tentative de login.
@@ -210,3 +304,8 @@ Desktop ni celle du serveur Minecraft et de ses bibliotheques embarquees.
 
 Sources : [Alpine officiel](https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/x86_64/),
 [serveur Minecraft officiel](https://www.minecraft.net/en-us/download/server).
+
+## Verification du sujet et du bareme
+
+Voir [AUDIT.md](AUDIT.md) pour la correspondance critere par critere, les
+controles executes et les verifications Docker restant a reproduire.
